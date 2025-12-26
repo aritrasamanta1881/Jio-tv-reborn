@@ -1,13 +1,11 @@
 <?php
 
-// * Copyright 2021-2025 SnehTV, Inc.
-// * Edited By : Gemini for Aritra (Direct Data Access)
+// * Edited By : Gemini for Aritra (Using Cloudflare Worker Proxy)
 
 $DATA_FOLDER = "../assets/data";
+// Your Cloudflare Worker URL
+$PROXY_GATEWAY = "https://billowing-union-5a63.banasrisamanta463.workers.dev";
 
-/**
- * Reads credentials directly from the file without decryption.
- */
 function getCRED()
 {
   global $DATA_FOLDER;
@@ -18,116 +16,71 @@ function getCRED()
   return null;
 }
 
-/**
- * Encryption bypassed: Returns raw data.
- */
-function encrypt_data($data, $key)
-{
-  return $data; 
-}
+// Bypassing encryption for easy manual updates
+function encrypt_data($data, $key) { return $data; }
+function decrypt_data($e_data, $key) { return $e_data; }
 
 /**
- * Decryption bypassed: Returns raw data.
+ * Main Proxy Request Function
  */
-function decrypt_data($e_data, $key)
+function proxy_request($path, $method = 'GET', $headers = [], $payload = null)
 {
-  return $e_data;
-}
-
-/**
- * Sends OTP to the provided mobile number via Jio API.
- */
-function send_jio_otp($mobile)
-{
-  $j_otp_api = 'https://jiotvapi.media.jio.com/userservice/apis/v1/loginotp/send';
-  $j_otp_headers = array(
-    'appname: RJIL_JioTV', 
-    'os: android', 
-    'devicetype: phone', 
-    'content-type: application/json', 
-    'user-agent: okhttp/3.14.9'
-  );
+  global $PROXY_GATEWAY;
+  $url = $PROXY_GATEWAY . $path; // Route via Cloudflare
   
-  $j_otp_payload = array('number' => base64_encode('+91' . $mobile));
-  
-  $process = curl_init($j_otp_api);
-  curl_setopt($process, CURLOPT_POST, 1);
-  curl_setopt($process, CURLOPT_POSTFIELDS, json_encode($j_otp_payload));
-  curl_setopt($process, CURLOPT_HTTPHEADER, $j_otp_headers);
-  curl_setopt($process, CURLOPT_TIMEOUT, 10);
+  $process = curl_init($url);
   curl_setopt($process, CURLOPT_RETURNTRANSFER, 1);
-  curl_setopt($process, CURLOPT_FOLLOWLOCATION, 1);
+  curl_setopt($process, CURLOPT_TIMEOUT, 20);
+  curl_setopt($process, CURLOPT_CUSTOMREQUEST, $method);
+  curl_setopt($process, CURLOPT_HTTPHEADER, $headers);
   
-  $j_otp_resp = curl_exec($process);
-  $j_otp_info = curl_getinfo($process);
+  if ($payload) {
+    curl_setopt($process, CURLOPT_POSTFIELDS, json_encode($payload));
+  }
+
+  $response = curl_exec($process);
+  $info = curl_getinfo($process);
   curl_close($process);
   
-  $j_otp_data = @json_decode($j_otp_resp, true);
-  
-  $resp = ['status' => 'error', 'user' => $mobile, 'message' => ''];
-  
-  if ($j_otp_info['http_code'] == 204) {
-    $resp['status'] = "success";
-    $resp['message'] = "OTP Sent Successfully";
-  } else {
-    $resp['message'] = $j_otp_data['message'] ?? "Unknown Error: " . $j_otp_info['http_code'];
-  }
-  return $resp;
+  return ['body' => $response, 'http_code' => $info['http_code']];
 }
 
-/**
- * Verifies OTP and saves the raw JSON response to creds.jtv.
- */
+function send_jio_otp($mobile)
+{
+  $path = '/userservice/apis/v1/loginotp/send';
+  $headers = ['appname: RJIL_JioTV', 'os: android', 'devicetype: phone', 'content-type: application/json'];
+  $payload = ['number' => base64_encode('+91' . $mobile)];
+  
+  $res = proxy_request($path, 'POST', $headers, $payload);
+  
+  if ($res['http_code'] == 204) {
+    return ['status' => 'success', 'message' => 'OTP Sent via Proxy'];
+  }
+  return ['status' => 'error', 'message' => 'Proxy Error: ' . $res['http_code']];
+}
+
 function verify_jio_otp($mobile, $otp)
 {
   global $DATA_FOLDER;
-  $j_otp_api = 'https://jiotvapi.media.jio.com/userservice/apis/v1/loginotp/verify';
-  $j_otp_headers = [
-    'appname: RJIL_JioTV',
-    'os: android',
-    'devicetype: phone',
-    'content-type: application/json',
-    'user-agent: okhttp/3.14.9'
-  ];
-
-  $j_otp_payload = [
+  $path = '/userservice/apis/v1/loginotp/verify';
+  $headers = ['appname: RJIL_JioTV', 'os: android', 'devicetype: phone', 'content-type: application/json'];
+  
+  $payload = [
     'number' => base64_encode('+91' . $mobile),
     'otp' => $otp,
-    'deviceInfo' => [
-      'consumptionDeviceName' => 'RMX1945',
-      'info' => [
-        'type' => 'android',
-        'platform' => ['name' => 'RMX1945'],
-        'androidId' => substr(sha1(time() . rand(00, 99)), 0, 16)
-      ]
-    ]
+    'deviceInfo' => ['consumptionDeviceName' => 'RMX1945', 'info' => ['type' => 'android', 'platform' => ['name' => 'RMX1945'], 'androidId' => '1234567890abcdef']]
   ];
 
-  $process = curl_init($j_otp_api);
-  curl_setopt($process, CURLOPT_POST, 1);
-  curl_setopt($process, CURLOPT_POSTFIELDS, json_encode($j_otp_payload));
-  curl_setopt($process, CURLOPT_HTTPHEADER, $j_otp_headers);
-  curl_setopt($process, CURLOPT_TIMEOUT, 10);
-  curl_setopt($process, CURLOPT_RETURNTRANSFER, 1);
-  
-  $j_otp_resp = curl_exec($process);
-  curl_close($process);
+  $res = proxy_request($path, 'POST', $headers, $payload);
+  $data = json_decode($res['body'], true);
 
-  $j_otp_data = @json_decode($j_otp_resp, true);
-  $resp = ['status' => 'error', 'user' => $mobile, 'message' => ''];
-
-  if (isset($j_otp_data['ssoToken']) && !empty($j_otp_data['ssoToken'])) {
-    // Saves raw JSON directly to the file
-    if (file_put_contents($DATA_FOLDER . "/creds.jtv", json_encode($j_otp_data))) {
-      $resp['status'] = 'success';
-      $resp['message'] = 'Login Successful';
-    } else {
-      $resp['message'] = 'Failed to write credentials file';
-    }
-  } else {
-    $resp['message'] = $j_otp_data['message'] ?? 'Verification Failed';
+  if (isset($data['ssoToken']) && !empty($data['ssoToken'])) {
+    file_put_contents($DATA_FOLDER . "/creds.jtv", $res['body']);
+    return ['status' => 'success', 'message' => 'Login Successful!'];
   }
-  return $resp;
+  return ['status' => 'error', 'message' => 'Verification Failed via Proxy'];
 }
+
+
 
 
