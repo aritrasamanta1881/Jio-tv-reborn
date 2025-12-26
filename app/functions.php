@@ -266,7 +266,7 @@ function getJioTvData($id)
   $post_data = http_build_query(['stream_type' => 'Seek', 'channel_id' => $id]);
 
   $headers = [
-    "Host: jiotvapi.media.jio.com",
+    "Host: https://t-sneh-proxy.vercel.app",
     "Content-Type: application/x-www-form-urlencoded",
     "appkey: NzNiMDhlYzQyNjJm",
     "channel_id: $id",
@@ -290,6 +290,7 @@ function getJioTvData($id)
     "versionCode: 452",
   ];
 
-  $response = cUrlGetData("https://jiotvapi.media.jio.com/playback/apis/v1/geturl?langId=6", $headers, $post_data);
+  $response = cUrlGetData("https://t-sneh-proxy.vercel.app/playback/apis/v1/geturl?langId=6", $headers, $post_data);
   return json_decode($response);
 }
+
